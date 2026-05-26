@@ -8,7 +8,7 @@
   <!-- 1. นำเข้า Tailwind CSS สำหรับความสวยงาม -->
   <script src="https://cdn.tailwindcss.com"></script>
   
-  <!-- 2. นำเข้าไอคอน Phosphor (ใช้แทน Lucide เพื่อให้รันบนไฟล์เดียวได้) -->
+  <!-- 2. นำเข้าไอคอน Phosphor -->
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
   
   <!-- 3. นำเข้า React และ ReactDOM -->
@@ -165,10 +165,10 @@
                      </div>
                      
                      <h1 className="text-4xl sm:text-5xl font-black text-slate-900 mb-3 tracking-tight">
-                       ระบบติดตาม<br/><span className="text-blue-600">การบ้าน</span>
+                        ระบบติดตาม<br/><span className="text-blue-600">การบ้าน</span>
                      </h1>
                      <p className="text-slate-500 mb-8 font-medium">
-                       ชั้น ม. 4/8 แผนการเรียนศิลป์สังคม
+                        ชั้น ม. 4/8 แผนการเรียนศิลป์สังคม
                      </p>
                   </div>
                   
@@ -218,12 +218,8 @@
                       <MonthlyCalendar homeworks={homeworks} />
                    </div>
 
-                   <div className="bento-card p-6 sm:p-8 bento-card-hover flex flex-col justify-center items-center text-center bg-gradient-to-br from-blue-600 to-indigo-700 text-white border-none relative overflow-hidden">
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
-                      <i className="ph-fill ph-trophy text-6xl mb-4 opacity-90 text-yellow-300"></i>
-                      <h3 className="text-2xl font-black mb-2">ทำผลงานให้ดีที่สุด!</h3>
-                      <p className="text-blue-100 text-sm">สะสมสถิติการส่งงานของคุณ<br/>เพื่อชิงตำแหน่ง "ตำนานแห่งห้อง"</p>
-                   </div>
+                   {/* ส่วนแสดง Top 5 หน้าแรก */}
+                   <FrontPageLeaderboard homeworks={homeworks} submissions={submissions} students={studentsList} />
                 </div>
               </div>
             </div>
@@ -311,6 +307,73 @@
 
       return { total, completed, percent, title, icon };
     };
+
+    function FrontPageLeaderboard({ homeworks, submissions, students }) {
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+
+      const monthHws = homeworks.filter(hw => {
+        const d = new Date(hw.dueDate);
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+      });
+
+      const totalMonthlyHws = monthHws.length;
+
+      let rankedStudents = students.map(st => {
+        let completed = 0;
+        monthHws.forEach(hw => {
+          const sub = submissions.find(s => String(s.hwId) === String(hw.id) && String(s.studentId) === String(st.id));
+          if (sub && sub.status === 'approved') completed++;
+        });
+        return { ...st, completed };
+      });
+
+      // กรองเอาเฉพาะคนที่ส่งงานอย่างน้อย 1 ชิ้น เรียงลำดับจากมากไปน้อย แล้วตัดมา 5 อันดับแรก
+      rankedStudents = rankedStudents.filter(st => st.completed > 0).sort((a, b) => b.completed - a.completed).slice(0, 5);
+
+      return (
+        <div className="bento-card p-6 sm:p-8 bento-card-hover flex flex-col h-full">
+           <div className="flex items-center justify-between mb-5">
+              <div>
+                 <h2 className="text-xl font-black text-slate-900">Top 5 ประจำเดือน</h2>
+                 <p className="text-slate-500 text-sm mt-0.5">ทำผลงานยอดเยี่ยมที่สุด</p>
+              </div>
+              <div className="w-10 h-10 bg-yellow-50 text-yellow-500 rounded-full flex items-center justify-center"><i className="ph-fill ph-ranking text-xl"></i></div>
+           </div>
+           
+           <div className="flex-1 flex flex-col justify-center space-y-2.5">
+             {totalMonthlyHws === 0 ? (
+                <div className="text-center py-4 opacity-50"><i className="ph-fill ph-star text-3xl text-slate-300 mb-2"></i><p className="text-slate-500 font-bold text-sm">ยังไม่มีการบ้านในเดือนนี้</p></div>
+             ) : rankedStudents.length === 0 ? (
+                <div className="text-center py-4 opacity-50"><i className="ph-fill ph-ghost text-3xl text-slate-300 mb-2"></i><p className="text-slate-500 font-bold text-sm">ยังไม่มีใครส่งงานผ่าน</p></div>
+             ) : (
+                rankedStudents.map((st, idx) => {
+                   const rank = idx + 1;
+                   let rankStyle = "bg-slate-50 border-slate-100";
+                   let icon = <span className="text-slate-400 font-black">{rank}</span>;
+                   
+                   if (rank===1) { rankStyle = "bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-200 shadow-sm"; icon = <i className="ph-fill ph-crown text-yellow-500 text-xl"></i>; }
+                   else if (rank===2) { rankStyle = "bg-gradient-to-r from-slate-50 to-gray-50 border-slate-200"; icon = <i className="ph-fill ph-medal text-slate-400 text-xl"></i>; }
+                   else if (rank===3) { rankStyle = "bg-gradient-to-r from-orange-50 to-orange-100/50 border-orange-200"; icon = <i className="ph-fill ph-medal text-orange-600 text-xl"></i>; }
+
+                   return (
+                     <div key={st.id} className={`flex items-center justify-between p-2.5 rounded-xl border ${rankStyle} transition-transform hover:scale-[1.02]`}>
+                        <div className="flex items-center gap-3 overflow-hidden">
+                           <div className="w-6 flex justify-center flex-shrink-0">{icon}</div>
+                           <p className="font-bold text-sm text-slate-800 truncate">{st.name}</p>
+                        </div>
+                        <div className="text-xs font-black px-2 py-1 bg-white border border-slate-100 text-slate-600 rounded-lg flex-shrink-0 ml-2 shadow-sm">
+                           {st.completed}/{totalMonthlyHws}
+                        </div>
+                     </div>
+                   )
+                })
+             )}
+           </div>
+        </div>
+      );
+    }
 
     function WeeklySchedule({ homeworks }) {
       const [weekDays, setWeekDays] = useState([]);
@@ -567,16 +630,34 @@
             <div className="lg:col-span-8 bento-card overflow-hidden">
               <div className="p-6 sm:p-8 border-b border-slate-100 flex items-center"><div className="bg-blue-50 p-2.5 rounded-xl mr-3"><i className="ph-bold ph-list text-xl text-blue-600"></i></div><h2 className="font-black text-slate-900 text-xl">รายการงานทั้งหมด</h2></div>
               <div className="overflow-x-auto p-4 sm:p-6 pt-0">
-                <table className="w-full text-left whitespace-nowrap border-separate border-spacing-y-2"><thead className="text-slate-400 text-[11px] font-bold"><tr><th className="px-4 py-2">วิชา / รายละเอียด</th><th className="px-4 py-2 text-center">กำหนดส่ง</th><th className="px-4 py-2 text-center">สถานะ</th><th className="px-4 py-2 text-center">จัดการ</th></tr></thead><tbody>
+                <table className="w-full text-left whitespace-nowrap border-separate border-spacing-y-2"><thead className="text-slate-400 text-[11px] font-bold"><tr><th className="px-4 py-2">วิชา / รายละเอียด</th><th className="px-4 py-2 text-center">กำหนดส่ง</th><th className="px-4 py-2 text-center">สถานะ</th><th className="px-4 py-2 min-w-[200px]">รายชื่อคนค้างส่ง</th><th className="px-4 py-2 text-center">จัดการ</th></tr></thead><tbody>
                   {homeworks.sort((a,b)=> new Date(b.assignDate) - new Date(a.assignDate)).map(hw => {
                     const approvedCount = submissions.filter(s => s.hwId === hw.id && s.status === 'approved').length;
                     const totalStudents = students.length;
                     const isComplete = approvedCount >= totalStudents && totalStudents > 0;
+                    
+                    // หาเพื่อนที่ยังไม่ส่งงาน
+                    const sentIds = submissions.filter(s => String(s.hwId) === String(hw.id) && s.status === 'approved').map(s => String(s.studentId));
+                    const missings = students.filter(st => !sentIds.includes(String(st.id)));
+
                     return (
                       <tr key={hw.id} className="bg-white hover:bg-slate-50 transition-colors rounded-2xl">
                         <td className="px-4 py-4 rounded-l-2xl border-y border-l border-slate-100"><p className="font-black text-slate-900 mb-1">{hw.subject}</p><p className="text-slate-500 text-xs truncate max-w-[250px]">{hw.detail}</p></td>
                         <td className="px-4 py-4 text-center border-y border-slate-100"><span className="font-bold text-orange-600 bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-100 text-xs inline-block">{new Date(hw.dueDate).toLocaleDateString('th-TH', {day:'numeric', month:'short'})}</span></td>
                         <td className="px-4 py-4 text-center border-y border-slate-100">{isComplete ? <span className="text-blue-600 font-bold text-sm flex items-center justify-center"><i className="ph-fill ph-check-circle text-lg mr-1"></i> ส่งครบ</span> : <span className="text-slate-900 font-black text-sm">{approvedCount} <span className="text-slate-400 text-xs">/ {totalStudents}</span></span>}</td>
+                        <td className="px-4 py-4 whitespace-normal border-y border-slate-100">
+                          {isComplete ? (
+                            <span className="text-xs text-slate-400 font-medium">- ไม่มี -</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1.5 max-w-[250px]">
+                              {missings.map(st => (
+                                <span key={st.id} className="bg-red-50 border border-red-100 text-red-600 px-2 py-1 rounded-md text-[10px] font-bold shadow-sm whitespace-nowrap">
+                                  {st.name.split(' ')[0]}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
                         <td className="px-4 py-4 text-center rounded-r-2xl border-y border-r border-slate-100"><button onClick={() => handleEditClick(hw)} className="bg-white border border-slate-200 text-slate-500 hover:text-slate-900 w-8 h-8 rounded-full flex items-center justify-center mx-auto transition-all shadow-sm"><i className="ph-bold ph-pencil-simple text-sm"></i></button></td>
                       </tr>
                     )
@@ -672,7 +753,7 @@
               <div className="p-6 border-b border-slate-100 flex items-center"><i className="ph-bold ph-trend-up text-xl text-blue-600 mr-2"></i><h3 className="font-black text-xl text-slate-900">รายละเอียดแต่ละวิชา</h3></div>
               <div className="overflow-x-auto p-4 sm:p-6">
                 <table className="w-full text-left whitespace-nowrap border-separate border-spacing-y-3">
-                  <thead className="text-slate-400 font-bold text-xs"><tr><th className="px-5 py-2">งานที่สั่ง</th><th className="px-5 py-2 text-center w-32">กำหนดส่ง</th><th className="px-5 py-2 text-center w-48">สถานะ</th><th className="px-5 py-2 min-w-[200px]">คนค้างส่ง</th></tr></thead>
+                  <thead className="text-slate-400 font-bold text-xs"><tr><th className="px-5 py-2">งานที่สั่ง</th><th className="px-5 py-2 text-center w-32">กำหนดส่ง</th><th className="px-5 py-2 text-center w-48">สถานะ</th><th className="px-5 py-2 min-w-[300px]">รายชื่อคนค้างส่ง</th></tr></thead>
                   <tbody>
                     {sortedHomeworks.map(hw => {
                       const sentIds = submissions.filter(s => String(s.hwId) === String(hw.id) && s.status === 'approved').map(s => String(s.studentId));
@@ -690,7 +771,17 @@
                             </div>
                           </td>
                           <td className="px-5 py-5 whitespace-normal rounded-r-2xl border-y border-r border-slate-100">
-                            {isComplete ? <div className="inline-flex items-center text-blue-600 font-bold text-sm"><i className="ph-fill ph-check-circle text-lg mr-1.5"></i> ส่งครบทุกคน</div> : <div className="flex flex-wrap gap-1.5 max-w-[200px]">{missings.slice(0, 5).map(st => (<span key={st.id} className="bg-white border border-slate-200 text-slate-600 px-2 py-1 rounded-md text-[10px] font-bold shadow-sm">{st.name.split(' ')[0]}</span>))}{missings.length > 5 && <span className="text-xs text-slate-400 font-bold self-center">+{missings.length - 5}</span>}</div>}
+                            {isComplete ? (
+                              <div className="inline-flex items-center text-blue-600 font-bold text-sm"><i className="ph-fill ph-check-circle text-lg mr-1.5"></i> ส่งครบทุกคน</div>
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5 max-w-[300px]">
+                                {missings.map(st => (
+                                  <span key={st.id} className="bg-white border border-slate-200 text-slate-600 px-2 py-1 rounded-md text-[10px] font-bold shadow-sm whitespace-nowrap">
+                                    {st.name.split(' ')[0]}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </td>
                         </tr>
                       )
