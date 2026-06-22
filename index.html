@@ -1,1 +1,746 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบติดตามการบ้าน ม.4/8</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
 
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap');
+    body { font-family: 'Noto Sans Thai', sans-serif; background-color: #f8fafc; }
+    /* ซ่อน scrollbar สำหรับตารางแนวนอนในมือถือ */
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect } = React;
+
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzjo-BpmFxjW7l5eHOqyimXIhrWgbc-h4q8hGX63l-3UDfT4_Pi4voRojpxJ1T-Vvk9zg/exec";
+
+    const SUBJECTS_LIST = [
+      "คณิตศาสตร์", "ภาษาไทย", "วิทยาศาสตร์", "ภาษาอังกฤษ", "สังคมศึกษา",
+      "พละ/สุขศึกษา", "การงาน", "ศิลปะ", "ภาษาพม่า", "IS",
+      "กฎหมาย", "การรู้ภูมิศาสตร์", "ประวัติศาสตร์", "อื่นๆ"
+    ];
+
+    // --- Helper Functions สำหรับจัดการวันที่ ---
+    const parseDateToYMD = (dateString) => {
+      if (!dateString) return '';
+      const d = new Date(dateString);
+      if (isNaN(d.getTime())) return dateString; 
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    const formatDisplayDate = (dateString) => {
+      if (!dateString) return '-';
+      const d = new Date(dateString);
+      if (isNaN(d.getTime())) return dateString;
+      const monthNames = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+      return `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear() + 543}`;
+    };
+
+    function App() {
+      const [user, setUser] = useState(null);
+      const [data, setData] = useState({ homeworks: [], submissions: [], students: [] });
+      const [loading, setLoading] = useState(true);
+      const [globalError, setGlobalError] = useState(""); // เพิ่ม State เพื่อแสดง Error แทน alert()
+
+      const fetchData = async (silent = false) => {
+        if (!silent) setLoading(true);
+        setGlobalError("");
+        try {
+          const res = await fetch(SCRIPT_URL + "?t=" + new Date().getTime());
+          const result = await res.json();
+          
+          if(result.submissions) {
+              result.submissions = result.submissions.map(s => ({...s, hwId: String(s.hwId), studentId: String(s.studentId)}));
+          }
+          if(result.homeworks) {
+              result.homeworks = result.homeworks.map(h => ({...h, id: String(h.id)}));
+          }
+          if(result.students) {
+              result.students = result.students.map(st => ({...st, id: String(st.id)}));
+          }
+
+          setData(result);
+        } catch (error) {
+          console.error("Error fetching data:", error);
+          if (!silent) setGlobalError("ไม่สามารถดึงข้อมูลจากเซิร์ฟเวอร์ได้ กรุณาลองโหลดหน้าเว็บใหม่");
+        }
+        if (!silent) setLoading(false);
+      };
+
+      useEffect(() => {
+        fetchData();
+      }, []);
+
+      const handleLogin = (loginId) => {
+        setGlobalError(""); // ล้างแจ้งเตือนเดิม
+        if (loginId === "representative") {
+          setUser({ role: 'rep', name: 'นักเรียนตัวแทน' });
+        } else {
+          const student = data.students.find(s => String(s.id) === String(loginId));
+          if (student) {
+            setUser({ ...student, role: 'student' });
+          } else {
+            setGlobalError("ไม่พบรหัสนักเรียนนี้ในระบบ กรุณาตรวจสอบรหัสอีกครั้ง");
+          }
+        }
+      };
+
+      const handleLogout = () => setUser(null);
+
+      if (loading) {
+        return (
+          <div className="min-h-screen flex flex-col items-center justify-center bg-blue-50">
+            <i className="ph ph-spinner-gap animate-spin text-5xl text-blue-600 mb-4"></i>
+            <p className="text-blue-800 font-medium text-lg">กำลังโหลดข้อมูลห้องเรียน...</p>
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-slate-50">
+          <nav className="bg-blue-600 text-white shadow-md p-4 sticky top-0 z-50">
+            <div className="max-w-6xl mx-auto flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <i className="ph-fill ph-books text-2xl"></i>
+                <h1 className="text-lg md:text-xl font-bold truncate max-w-[200px] md:max-w-full">ระบบติดตามการบ้าน</h1>
+              </div>
+              {user && (
+                <div className="flex items-center gap-2 md:gap-4">
+                  <span className="text-xs md:text-sm font-medium bg-blue-700 px-2 md:px-3 py-1 rounded-full truncate max-w-[120px] md:max-w-full">
+                    {user.name.split(' ')[0]} {user.role === 'rep' ? '(ตัวแทน)' : ''}
+                  </span>
+                  <button onClick={handleLogout} className="text-blue-100 hover:text-white bg-blue-800 p-2 rounded-lg transition">
+                    <i className="ph-bold ph-sign-out text-lg md:text-xl"></i>
+                  </button>
+                </div>
+              )}
+            </div>
+          </nav>
+
+          <main className="max-w-6xl mx-auto p-4 md:p-6 pb-20">
+            {!user ? (
+              <LoginScreen onLogin={handleLogin} data={data} globalError={globalError} />
+            ) : user.role === 'rep' ? (
+              <RepDashboard data={data} refreshData={fetchData} setData={setData} />
+            ) : (
+              <StudentDashboard user={user} data={data} refreshData={fetchData} setData={setData} />
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // คอมโพเนนต์ ปฏิทินรายเดือน (Monthly Calendar)
+    // ==========================================
+    function MonthlyCalendar({ homeworks }) {
+      const [currentDate, setCurrentDate] = useState(new Date());
+
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const firstDayOfMonth = new Date(year, month, 1).getDay();
+
+      const days = [];
+      for (let i = 0; i < firstDayOfMonth; i++) {
+        days.push(null);
+      }
+      for (let i = 1; i <= daysInMonth; i++) {
+        days.push(new Date(year, month, i));
+      }
+
+      const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+      const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+
+      const monthNames = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+      const dayNames = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
+
+      const getHomeworksForDate = (dateObj) => {
+        if (!dateObj) return [];
+        const dateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+        return homeworks.filter(hw => parseDateToYMD(hw.dueDate) === dateStr);
+      };
+
+      const today = new Date();
+      const isToday = (dateObj) => {
+        if (!dateObj) return false;
+        return dateObj.getDate() === today.getDate() && dateObj.getMonth() === today.getMonth() && dateObj.getFullYear() === today.getFullYear();
+      };
+
+      return (
+        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-lg md:text-xl font-bold text-slate-800 flex items-center gap-2">
+              <i className="ph-fill ph-calendar text-blue-600"></i> ปฏิทินกำหนดส่งงาน
+            </h3>
+            <div className="flex items-center gap-2 md:gap-4 bg-slate-50 p-1 md:p-1.5 rounded-xl border border-slate-200">
+              <button onClick={prevMonth} className="p-1 md:p-2 hover:bg-white rounded-lg text-slate-600 shadow-sm transition"><i className="ph-bold ph-caret-left"></i></button>
+              <span className="font-bold text-slate-700 min-w-[100px] text-center text-sm md:text-base">{monthNames[month]} {year + 543}</span>
+              <button onClick={nextMonth} className="p-1 md:p-2 hover:bg-white rounded-lg text-slate-600 shadow-sm transition"><i className="ph-bold ph-caret-right"></i></button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 md:gap-2 text-center mb-2">
+            {dayNames.map((day, idx) => (
+              <div key={idx} className={`text-xs md:text-sm font-bold pb-2 ${idx === 0 || idx === 6 ? 'text-red-500' : 'text-slate-500'}`}>{day}</div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 md:gap-2">
+            {days.map((dateObj, index) => {
+              const hws = getHomeworksForDate(dateObj);
+              const hasWork = hws.length > 0;
+              const isCurrentDay = isToday(dateObj);
+
+              return (
+                <div key={index} className={`
+                  min-h-[60px] md:min-h-[80px] p-1 border rounded-xl flex flex-col relative transition-all duration-200
+                  ${!dateObj ? 'bg-transparent border-transparent' : 'bg-white border-slate-100'}
+                  ${isCurrentDay ? 'ring-2 ring-blue-500 ring-offset-2' : ''}
+                  ${hasWork ? 'bg-red-50/50 border-red-100 hover:shadow-md' : 'hover:border-slate-300'}
+                `}>
+                  {dateObj && (
+                    <>
+                      <span className={`text-sm md:text-base font-medium ${isCurrentDay ? 'text-blue-600 font-bold' : 'text-slate-700'} ${dateObj.getDay() === 0 || dateObj.getDay() === 6 ? 'text-red-500' : ''}`}>
+                        {dateObj.getDate()}
+                      </span>
+                      
+                      <div className="flex flex-wrap gap-1 justify-center mt-1 md:hidden">
+                        {hws.map(hw => <div key={hw.id} className="w-1.5 h-1.5 rounded-full bg-red-500"></div>)}
+                      </div>
+
+                      <div className="hidden md:flex flex-col gap-1 mt-1 overflow-y-auto hide-scrollbar absolute top-7 bottom-1 left-1 right-1">
+                        {hws.map(hw => (
+                          <div key={hw.id} className="text-[10px] leading-tight bg-red-500 text-white px-1.5 py-0.5 rounded-md truncate cursor-default" title={hw.subject}>
+                            {hw.subject}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          
+          <div className="mt-6 border-t border-slate-100 pt-4">
+            <h4 className="text-sm font-bold text-slate-600 mb-3">รายการงานเดือน {monthNames[month]}</h4>
+            <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2">
+              {homeworks
+                .filter(hw => {
+                  const d = new Date(hw.dueDate);
+                  return !isNaN(d) && d.getMonth() === month && d.getFullYear() === year;
+                })
+                .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate))
+                .map(hw => (
+                  <div key={hw.id} className="flex justify-between items-center text-sm p-2 bg-slate-50 rounded-lg border border-slate-100">
+                    <div className="flex items-center gap-2 truncate">
+                      <div className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></div>
+                      <span className="font-bold text-slate-800 truncate">{hw.subject}</span>
+                    </div>
+                    <span className="text-xs font-medium bg-red-100 text-red-700 px-2 py-1 rounded-md flex-shrink-0">
+                      ส่ง {formatDisplayDate(hw.dueDate)}
+                    </span>
+                  </div>
+              ))}
+              {homeworks.filter(hw => new Date(hw.dueDate).getMonth() === month).length === 0 && (
+                <p className="text-sm text-slate-400 text-center py-2">ไม่มีงานในเดือนนี้</p>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // หน้า Login
+    // ==========================================
+    function LoginScreen({ onLogin, data, globalError }) {
+      const [loginId, setLoginId] = useState("");
+
+      return (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-slate-100 h-fit">
+            <div className="text-center mb-6">
+              <div className="w-20 h-20 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i className="ph-duotone ph-student text-4xl"></i>
+              </div>
+              <h2 className="text-2xl font-bold text-slate-800">เข้าสู่ระบบ</h2>
+              <p className="text-slate-500 text-sm mt-1">กรอกรหัสนักเรียน หรือ representative</p>
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); onLogin(loginId); }} className="space-y-4">
+              {globalError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm font-bold flex items-start gap-2">
+                  <i className="ph-fill ph-warning-circle text-lg mt-0.5"></i>
+                  {globalError}
+                </div>
+              )}
+              <div>
+                <input 
+                  type="text" 
+                  value={loginId}
+                  onChange={(e) => setLoginId(e.target.value)}
+                  placeholder="รหัสประจำตัว" 
+                  className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none transition"
+                  required
+                />
+              </div>
+              <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition shadow-md">
+                เข้าสู่ระบบ
+              </button>
+            </form>
+          </div>
+
+          <div className="lg:col-span-2 space-y-6">
+            <MonthlyCalendar homeworks={data.homeworks} />
+            <Leaderboard students={data.students} submissions={data.submissions} />
+          </div>
+        </div>
+      );
+    }
+
+    function Leaderboard({ students, submissions }) {
+      const scores = students.map(student => {
+        const approvedCount = submissions.filter(s => String(s.studentId) === String(student.id) && s.status === 'approved').length;
+        return { ...student, score: approvedCount };
+      });
+      const topStudents = scores.sort((a, b) => b.score - a.score).filter(s => s.score > 0).slice(0, 5);
+
+      return (
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <div className="flex items-center gap-2 mb-4 text-orange-500">
+            <i className="ph-fill ph-crown text-2xl"></i>
+            <h3 className="text-lg font-bold text-slate-800">Top 5 ส่งงานครบและสม่ำเสมอ</h3>
+          </div>
+          {topStudents.length === 0 ? (
+            <p className="text-slate-500 text-sm text-center py-4">ยังไม่มีข้อมูลการส่งงาน</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {topStudents.map((st, index) => (
+                <div key={st.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="flex items-center gap-3 truncate">
+                    <div className={`w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center font-bold text-sm ${index === 0 ? 'bg-yellow-100 text-yellow-600' : index === 1 ? 'bg-slate-200 text-slate-600' : index === 2 ? 'bg-orange-100 text-orange-700' : 'bg-blue-50 text-blue-600'}`}>
+                      {index + 1}
+                    </div>
+                    <span className="font-medium text-slate-700 truncate">{st.name}</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-green-600 font-bold bg-green-50 px-2 py-1 rounded-md text-xs flex-shrink-0">
+                    <i className="ph-fill ph-check-circle"></i> {st.score} งาน
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // หน้านักเรียน (Student Dashboard)
+    // ==========================================
+    function StudentDashboard({ user, data, refreshData, setData }) {
+      const [activeTab, setActiveTab] = useState('pending'); 
+      const [submittingIds, setSubmittingIds] = useState({});
+      const [confirmId, setConfirmId] = useState(null); // ใช้สำหรับแทนที่คำสั่ง confirm()
+
+      // คำนวณสถานะงาน
+      const myTasks = data.homeworks.map(hw => {
+        const sub = data.submissions.find(s => String(s.hwId) === String(hw.id) && String(s.studentId) === String(user.id));
+        return { ...hw, status: sub ? sub.status : 'missing' };
+      });
+
+      const pendingTasks = myTasks.filter(t => t.status === 'missing');
+      const doneTasks = myTasks.filter(t => t.status === 'submitted' || t.status === 'approved');
+
+      const submitHomework = async (hwId) => {
+        setConfirmId(null);
+        setSubmittingIds(prev => ({...prev, [hwId]: true}));
+        
+        // 1. อัปเดต UI ทันที (Optimistic Update)
+        setData(prev => {
+          const newSubs = [...prev.submissions];
+          const idx = newSubs.findIndex(s => String(s.hwId) === String(hwId) && String(s.studentId) === String(user.id));
+          if(idx >= 0) newSubs[idx].status = 'submitted';
+          else newSubs.push({ hwId: String(hwId), studentId: String(user.id), status: 'submitted' });
+          return { ...prev, submissions: newSubs };
+        });
+
+        // 2. ส่งข้อมูลเบื้องหลัง โดยใช้ mode: 'no-cors' ป้องกันปัญหาจุกจิกของ Browser
+        fetch(SCRIPT_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'addSubmission', data: { hwId: String(hwId), studentId: String(user.id), status: 'submitted' } })
+        }).catch(error => {
+          console.error(error);
+        });
+      };
+
+      const renderTaskCard = (hw) => {
+        const isSubmittingThis = submittingIds[hw.id];
+        const isConfirming = confirmId === hw.id;
+
+        return (
+        <div key={hw.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col hover:shadow-md transition">
+          <div className="flex justify-between items-start mb-3 gap-2">
+            <h3 className="font-bold text-lg text-slate-800 line-clamp-2">{hw.subject}</h3>
+            {hw.status === 'missing' && <span className="text-[10px] md:text-xs font-bold px-2 py-1 rounded-md border bg-red-50 text-red-600 border-red-200 flex-shrink-0">ยังไม่ส่ง</span>}
+            {hw.status === 'submitted' && <span className="text-[10px] md:text-xs font-bold px-2 py-1 rounded-md border bg-yellow-50 text-yellow-600 border-yellow-200 flex-shrink-0">รอตรวจ</span>}
+            {hw.status === 'approved' && <span className="text-[10px] md:text-xs font-bold px-2 py-1 rounded-md border bg-green-50 text-green-600 border-green-200 flex-shrink-0">ตรวจแล้ว</span>}
+          </div>
+          <p className="text-sm text-slate-600 mb-4 flex-grow line-clamp-3">{hw.detail}</p>
+          
+          <div className="flex flex-col gap-1 text-xs text-slate-500 mb-4 bg-slate-50 p-2 rounded-lg">
+            <div className="flex items-center"><i className="ph ph-calendar-plus mr-2 text-slate-400"></i>สั่ง: <span className="ml-1 font-medium">{formatDisplayDate(hw.assignDate)}</span></div>
+            <div className={`flex items-center ${hw.status === 'missing' ? 'text-red-500 font-bold' : ''}`}><i className="ph ph-calendar-check mr-2"></i>กำหนดส่ง: <span className="ml-1">{formatDisplayDate(hw.dueDate)}</span></div>
+          </div>
+          
+          {hw.status === 'missing' && (
+            isConfirming ? (
+              <div className="flex gap-2 mt-auto">
+                <button onClick={() => setConfirmId(null)} className="w-1/2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2.5 rounded-xl transition text-sm">
+                  ยกเลิก
+                </button>
+                <button onClick={() => submitHomework(hw.id)} className="w-1/2 bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-xl transition text-sm flex justify-center items-center gap-1 shadow-sm">
+                  <i className="ph-bold ph-check"></i> ยืนยันส่ง
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmId(hw.id)} disabled={isSubmittingThis} className="w-full mt-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl transition text-sm flex justify-center items-center gap-2 shadow-sm">
+                {isSubmittingThis ? <i className="ph ph-spinner-gap animate-spin text-lg"></i> : <i className="ph-bold ph-paper-plane-right text-lg"></i>}
+                {isSubmittingThis ? 'กำลังส่ง...' : 'กดส่งงานนี้'}
+              </button>
+            )
+          )}
+        </div>
+        );
+      };
+
+      return (
+        <div className="max-w-5xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
+              <div className="text-3xl font-black text-slate-800">{myTasks.length}</div>
+              <div className="text-xs md:text-sm text-slate-500 font-medium">งานทั้งหมด</div>
+            </div>
+            <div className="bg-red-50 p-4 rounded-2xl shadow-sm border border-red-100 text-center">
+              <div className="text-3xl font-black text-red-600">{pendingTasks.length}</div>
+              <div className="text-xs md:text-sm text-red-600 font-medium">ยังไม่ส่ง</div>
+            </div>
+            <div className="bg-yellow-50 p-4 rounded-2xl shadow-sm border border-yellow-100 text-center hidden md:block">
+              <div className="text-3xl font-black text-yellow-600">{myTasks.filter(t=>t.status==='submitted').length}</div>
+              <div className="text-xs md:text-sm text-yellow-700 font-medium">รอตัวแทนตรวจ</div>
+            </div>
+            <div className="bg-green-50 p-4 rounded-2xl shadow-sm border border-green-100 text-center">
+              <div className="text-3xl font-black text-green-600">{myTasks.filter(t=>t.status==='approved').length}</div>
+              <div className="text-xs md:text-sm text-green-700 font-medium">สำเร็จแล้ว</div>
+            </div>
+          </div>
+
+          <div className="flex overflow-x-auto hide-scrollbar gap-2 mb-6 border-b border-slate-200 pb-2">
+            <button onClick={() => setActiveTab('pending')} className={`flex items-center gap-2 px-4 md:px-6 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition ${activeTab === 'pending' ? 'bg-red-500 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}>
+              <i className="ph-bold ph-warning-circle text-lg"></i> งานที่ต้องทำ
+              {pendingTasks.length > 0 && <span className="bg-white text-red-500 px-1.5 py-0.5 rounded-md text-[10px] ml-1">{pendingTasks.length}</span>}
+            </button>
+            <button onClick={() => setActiveTab('done')} className={`flex items-center gap-2 px-4 md:px-6 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition ${activeTab === 'done' ? 'bg-green-500 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}>
+              <i className="ph-bold ph-check-circle text-lg"></i> ส่งแล้ว
+            </button>
+            <button onClick={() => setActiveTab('calendar')} className={`flex items-center gap-2 px-4 md:px-6 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition ${activeTab === 'calendar' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}>
+              <i className="ph-bold ph-calendar-blank text-lg"></i> ปฏิทิน
+            </button>
+          </div>
+
+          {activeTab === 'pending' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {pendingTasks.length === 0 ? (
+                <div className="col-span-full py-12 text-center bg-white rounded-2xl border border-dashed border-slate-300">
+                  <div className="w-16 h-16 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-3"><i className="ph-fill ph-party-disease text-3xl"></i></div>
+                  <h3 className="text-lg font-bold text-slate-700">ยอดเยี่ยม! คุณส่งงานครบหมดแล้ว</h3>
+                </div>
+              ) : pendingTasks.map(hw => renderTaskCard(hw))}
+            </div>
+          )}
+
+          {activeTab === 'done' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+               {doneTasks.length === 0 ? (
+                <div className="col-span-full py-12 text-center bg-white rounded-2xl border border-dashed border-slate-300">
+                  <p className="text-slate-500">ยังไม่มีประวัติการส่งงาน</p>
+                </div>
+              ) : doneTasks.map(hw => renderTaskCard(hw))}
+            </div>
+          )}
+
+          {activeTab === 'calendar' && (
+            <MonthlyCalendar homeworks={data.homeworks} />
+          )}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // หน้าตัวแทนห้อง (Representative Dashboard)
+    // ==========================================
+    function RepDashboard({ data, refreshData, setData }) {
+      const [view, setView] = useState('list');
+      const [activeHw, setActiveHw] = useState(null);
+
+      return (
+        <div className="max-w-5xl mx-auto">
+          <div className="flex flex-wrap gap-2 mb-6">
+            <button 
+              onClick={() => { setView('list'); setActiveHw(null); }}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition shadow-sm ${view === 'list' && !activeHw ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+            >
+              <i className="ph-bold ph-list-bullets text-lg"></i> รายการการบ้านทั้งหมด
+            </button>
+            <button 
+              onClick={() => { setView('add'); setActiveHw(null); }}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm transition shadow-sm ${view === 'add' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
+            >
+              <i className="ph-bold ph-plus-circle text-lg"></i> มอบหมายงานใหม่
+            </button>
+          </div>
+
+          {view === 'add' && <AddHomeworkForm refreshData={refreshData} setView={setView} />}
+          {view === 'list' && !activeHw && <RepHomeworkList data={data} setActiveHw={setActiveHw} />}
+          {activeHw && <HwApprovalView hw={activeHw} data={data} refreshData={refreshData} goBack={() => setActiveHw(null)} setData={setData} />}
+        </div>
+      );
+    }
+
+    function RepHomeworkList({ data, setActiveHw }) {
+      const totalStudents = data.students.length;
+
+      return (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="overflow-x-auto hide-scrollbar w-full">
+            <table className="w-full min-w-[600px] text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-600 text-sm border-b border-slate-200 whitespace-nowrap">
+                  <th className="p-4 md:p-5 font-bold w-1/3">วิชา/ชิ้นงาน</th>
+                  <th className="p-4 md:p-5 font-bold text-center">วันที่สั่ง</th>
+                  <th className="p-4 md:p-5 font-bold text-center">กำหนดส่ง</th>
+                  <th className="p-4 md:p-5 font-bold text-center">ความคืบหน้า</th>
+                  <th className="p-4 md:p-5 font-bold text-center">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {data.homeworks.length === 0 && (
+                  <tr><td colSpan="5" className="p-8 text-center text-slate-500">ยังไม่ได้มอบหมายงานใดๆ</td></tr>
+                )}
+                {data.homeworks.sort((a,b) => new Date(b.assignDate) - new Date(a.assignDate)).map(hw => {
+                  const submittedCount = data.submissions.filter(s => String(s.hwId) === String(hw.id) && (s.status === 'submitted' || s.status === 'approved')).length;
+                  const isAllDone = submittedCount === totalStudents && totalStudents > 0;
+                  const percent = totalStudents > 0 ? Math.round((submittedCount/totalStudents)*100) : 0;
+
+                  return (
+                    <tr key={hw.id} className="hover:bg-slate-50 transition group">
+                      <td className="p-4 md:p-5">
+                        <div className="font-bold text-slate-800 mb-1">{hw.subject}</div>
+                        <div className="text-xs text-slate-500 line-clamp-1 max-w-[200px]">{hw.detail}</div>
+                      </td>
+                      <td className="p-4 md:p-5 text-center text-sm text-slate-600 whitespace-nowrap">{formatDisplayDate(hw.assignDate)}</td>
+                      <td className="p-4 md:p-5 text-center text-sm text-red-600 font-medium whitespace-nowrap">{formatDisplayDate(hw.dueDate)}</td>
+                      <td className="p-4 md:p-5">
+                        <div className="flex flex-col items-center justify-center gap-1">
+                          <span className={`text-xs font-bold ${isAllDone ? 'text-green-600' : 'text-slate-600'}`}>
+                            {submittedCount} / {totalStudents} คน
+                          </span>
+                          <div className="w-full bg-slate-200 rounded-full h-1.5">
+                            <div className={`h-1.5 rounded-full ${isAllDone ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${percent}%` }}></div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4 md:p-5 text-center">
+                        <button onClick={() => setActiveHw(hw)} className="bg-white border border-blue-200 hover:border-blue-500 hover:bg-blue-50 text-blue-700 px-4 py-2 rounded-xl text-sm font-bold transition shadow-sm flex items-center justify-center gap-2 mx-auto whitespace-nowrap">
+                          <i className="ph-bold ph-list-magnifying-glass text-lg"></i> ตรวจงาน
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    function HwApprovalView({ hw, data, refreshData, goBack, setData }) {
+      const [processingIds, setProcessingIds] = useState({});
+
+      const approveStudent = async (studentId) => {
+        setProcessingIds(prev => ({...prev, [studentId]: true}));
+        
+        setData(prev => {
+          const newSubs = [...prev.submissions];
+          const idx = newSubs.findIndex(s => String(s.hwId) === String(hw.id) && String(s.studentId) === String(studentId));
+          if(idx >= 0) newSubs[idx].status = 'approved';
+          else newSubs.push({ hwId: String(hw.id), studentId: String(studentId), status: 'approved' });
+          return { ...prev, submissions: newSubs };
+        });
+
+        fetch(SCRIPT_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'addSubmission', data: { hwId: String(hw.id), studentId: String(studentId), status: 'approved' } })
+        }).catch(error => console.error(error));
+        
+        setProcessingIds(prev => ({...prev, [studentId]: false}));
+      };
+
+      return (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 md:p-6">
+          <div className="flex flex-col md:flex-row md:items-center gap-4 mb-6 border-b border-slate-100 pb-4">
+            <button onClick={goBack} className="text-slate-400 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 p-2 rounded-full self-start md:self-auto transition">
+              <i className="ph-bold ph-arrow-left text-xl"></i>
+            </button>
+            <div>
+              <h2 className="text-lg md:text-xl font-bold text-slate-800">{hw.subject}</h2>
+              <div className="text-xs md:text-sm text-slate-500 mt-1 flex flex-wrap gap-3">
+                <span>สั่ง: {formatDisplayDate(hw.assignDate)}</span>
+                <span className="text-red-500 font-medium">กำหนดส่ง: {formatDisplayDate(hw.dueDate)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+            {data.students.map(st => {
+              const sub = data.submissions.find(s => String(s.hwId) === String(hw.id) && String(s.studentId) === String(st.id));
+              const status = sub ? sub.status : 'missing';
+              const isProcessing = processingIds[st.id];
+
+              return (
+                <div key={st.id} className="flex items-center justify-between p-3 md:p-4 bg-slate-50 border border-slate-100 rounded-xl hover:shadow-sm transition">
+                  <div className="flex flex-col truncate pr-2">
+                    <span className="font-bold text-slate-800 text-sm md:text-base truncate">{st.name}</span>
+                    <span className="text-[10px] md:text-xs text-slate-500">รหัส: {st.id}</span>
+                  </div>
+                  <div className="flex-shrink-0">
+                    {status === 'missing' && <span className="text-[10px] md:text-xs font-bold text-slate-500 bg-slate-200 px-2.5 py-1 rounded-md">ยังไม่ส่ง</span>}
+                    {status === 'approved' && <span className="flex items-center text-[10px] md:text-xs font-bold text-green-700 bg-green-100 px-2.5 py-1 rounded-md border border-green-200"><i className="ph-fill ph-check-circle mr-1 text-sm"></i>อนุมัติแล้ว</span>}
+                    {status === 'submitted' && (
+                      <button onClick={() => approveStudent(st.id)} disabled={isProcessing} className="bg-yellow-500 hover:bg-yellow-600 text-white text-[10px] md:text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1">
+                        {isProcessing ? <i className="ph animate-spin ph-spinner-gap"></i> : <i className="ph-bold ph-check"></i>} อนุมัติ
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    function AddHomeworkForm({ refreshData, setView }) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const [form, setForm] = useState({ subject: SUBJECTS_LIST[0], assignDate: todayStr, dueDate: '', detail: '' });
+      const [isSaving, setIsSaving] = useState(false);
+      const [statusMsg, setStatusMsg] = useState(null); // แสดงข้อความสำเร็จแทน alert()
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setIsSaving(true);
+        setStatusMsg(null);
+        
+        const newHw = {
+          id: 'HW' + Date.now(),
+          subject: form.subject,
+          assignDate: form.assignDate, 
+          dueDate: form.dueDate,
+          detail: form.detail
+        };
+
+        try {
+          fetch(SCRIPT_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: 'addHomework', data: newHw })
+          });
+          
+          setStatusMsg({ type: 'success', text: 'มอบหมายงานสำเร็จ ทุกคนในห้องจะเห็นงานนี้' });
+          setTimeout(() => {
+            refreshData(true);
+            setView('list');
+          }, 1500);
+        } catch (error) {
+          setStatusMsg({ type: 'error', text: 'เกิดข้อผิดพลาดในการบันทึก' });
+          setIsSaving(false);
+        }
+      };
+
+      return (
+        <form onSubmit={handleSubmit} className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200 max-w-2xl mx-auto">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl md:text-2xl font-bold text-slate-800">สร้างภาระงานใหม่</h2>
+            <i className="ph-duotone ph-megaphone text-4xl text-blue-500"></i>
+          </div>
+
+          {statusMsg && (
+            <div className={`mb-5 p-4 rounded-xl border flex items-center gap-3 font-bold ${statusMsg.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+              <i className={`text-2xl ${statusMsg.type === 'success' ? 'ph-fill ph-check-circle' : 'ph-fill ph-warning-circle'}`}></i>
+              {statusMsg.text}
+            </div>
+          )}
+          
+          <div className="space-y-5">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1">1. ชื่อวิชา <span className="text-red-500">*</span></label>
+              <div className="relative">
+                <select required value={form.subject} onChange={e => setForm({...form, subject: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none appearance-none bg-slate-50 font-medium text-slate-800">
+                  {SUBJECTS_LIST.map(sub => <option key={sub} value={sub}>{sub}</option>)}
+                </select>
+                <i className="ph-bold ph-caret-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"></i>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">2. วันที่สั่ง <span className="text-red-500">*</span></label>
+                <input required type="date" value={form.assignDate} onChange={e => setForm({...form, assignDate: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50 font-medium text-slate-800" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">3. วันที่ส่ง (Deadline) <span className="text-red-500">*</span></label>
+                <input required type="date" min={form.assignDate} value={form.dueDate} onChange={e => setForm({...form, dueDate: e.target.value})} className="w-full px-4 py-3 rounded-xl border border-red-300 focus:ring-2 focus:ring-red-500 outline-none bg-red-50 font-medium text-red-800" />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1">4. รายละเอียดงาน <span className="text-slate-400 font-normal">(ใส่หรือไม่ใส่ก็ได้)</span></label>
+              <textarea rows="3" value={form.detail} onChange={e => setForm({...form, detail: e.target.value})} placeholder="เช่น ทำแบบฝึกหัดหน้า 15-20 หรือ เตรียมอุปกรณ์วาดรูป..." className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50"></textarea>
+            </div>
+            
+            <div className="pt-4 border-t border-slate-100">
+              <button type="submit" disabled={isSaving} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition text-lg shadow-md flex items-center justify-center gap-2">
+                {isSaving ? <i className="ph animate-spin ph-spinner-gap text-2xl"></i> : <i className="ph-bold ph-paper-plane-tilt text-2xl"></i>}
+                {isSaving ? 'กำลังกระจายงาน...' : 'บันทึกและมอบหมายงาน'}
+              </button>
+            </div>
+          </div>
+        </form>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
